@@ -16,6 +16,7 @@ class ExtractResumeFieldToolSchema(BaseModel):
     firstname: Optional[str] = Field(None, description="First name from resume")
     lastname: Optional[str] = Field(None, description="Last name from resume")
     middlename: Optional[str] = Field(None, description="Middle name from resume")
+    objective: str = Field(..., description="Objective of the individual from resume")
     linkedin_url: Optional[str] = Field(None, description="URL of LinkedIn profile from resume")
     github_url: Optional[str] = Field(None, description="URL of GitHub profile from resume")
     email: Optional[str] = Field(None, description="Email address from resume")

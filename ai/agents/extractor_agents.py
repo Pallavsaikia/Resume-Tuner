@@ -7,12 +7,12 @@ class ExtractorAgent:
     def __init__(self,llm:LLM):
         self.agent=Agent(
             role='Resume Data Extractor',
-            goal='Extract the dat with tools at disposal to extract resume data',
+            goal='Extract the data with tools at disposal to extract resume data',
             verbose=True,
             llm=llm,
             tools=[ExtractResumeFieldTool()],
             backstory='you are a expert in extracting resume data',
-            allow_delegation=False
+            allow_delegation=False,
         )
         
     def get_agent(self)->Agent:

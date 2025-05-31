@@ -16,6 +16,7 @@ from ai.llm.azure_open_ai import get_azure_open_ai_llm
 from ai.tasks.extract_resume_task import ExtractResumeTask
 from server.resume.models import Resume,ResumeType
 import ast
+from ai.agents.resume_tuner_agent import ResumeTuningCrew
 
 class ResumeService:
     @staticmethod
@@ -148,6 +149,47 @@ class ResumeService:
                     "filename": filename,
                     "message": "Resume processed successfully",
                     "text_snippet": str(new_resume)  # first 500 chars as sample
+                }
+                yield f"event: done\ndata: {json.dumps(result)}\n\n"
+
+            except Exception as e:
+                yield f"event: error\ndata: {json.dumps({'message': str(e)})}\n\n"
+
+        return EventSourceResponse(event_generator())
+
+
+    @staticmethod
+    async def tune_resume_events(user_id:int,resume_id:int,job_description:str,comment:str):
+
+
+        async def event_generator():
+            try:
+                llm=get_azure_open_ai_llm()
+                resume=await Resume.get(id=resume_id)
+                print(resume)
+                extracted_data=ResumeTuningCrew(llm).crew().kickoff(inputs={
+                    "resume": resume.extracted_data,  # Your actual user ID
+                    "job_description":job_description,
+                    "comment":comment
+                }) 
+                print(extracted_data)
+                
+                extracted_json_data=extracted_data.raw
+                print(type(extracted_json_data))
+                extracted_json=ResumeService.safe_json_parse(extracted_json_data)
+                if extracted_json is None:
+                    raise Exception("Bad json")
+
+                new_resume = await Resume.create(
+                    file_path="test",
+                    extracted_data= extracted_json,
+                    resume_type=ResumeType.GENERATED,  # or ResumeType.GENERATED
+                    user_id=user_id
+                )
+                result = {
+                    "status": "success",
+                    "message": "Resume processed successfully",
+                    "text_snippet": str(extracted_data)  # first 500 chars as sample
                 }
                 yield f"event: done\ndata: {json.dumps(result)}\n\n"
 
