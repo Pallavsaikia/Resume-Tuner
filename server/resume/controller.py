@@ -7,7 +7,7 @@ import json
 from fastapi import UploadFile, Request
 from sse_starlette.sse import EventSourceResponse
 from config import AppConfig, ConfigKeys
-from server.resume.dto.schema import TuneResumeDTO
+from server.resume.dto.schema import TuneResumeDTO,ResumeGenerateDTO
 # server/resume/controller.py
 
 from fastapi import Request, UploadFile
@@ -23,3 +23,7 @@ async def process_resume(request: Request, file: UploadFile):
 
 async def tune_resume(request:Request, data: TuneResumeDTO):
     return await ResumeService.tune_resume_events(request.state.user_id,data.resume_id,data.job_description_id,data.comment)
+
+
+async def generate_resume_controller(request:Request, data: ResumeGenerateDTO):
+    return await ResumeService.generate_resume_service(request.state.user_id,data.resume_id)

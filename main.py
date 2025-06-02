@@ -12,13 +12,14 @@ load_dotenv()
 app = FastAPI()
 
 
-UPLOAD_DIR = os.path.join(os.getcwd(), "uploads")
-os.makedirs(UPLOAD_DIR, exist_ok=True) 
-print(UPLOAD_DIR)
+RESUME_STATIC_DIR = os.path.join(os.getcwd(), "resume_serve")
+os.makedirs(RESUME_STATIC_DIR, exist_ok=True) 
+print(RESUME_STATIC_DIR)
 AppConfig.set(ConfigKeys.JWT_SECRET,os.getenv("JWT_SECRET"))
 AppConfig.set(ConfigKeys.JWT_ALGORITHM,"HS256")
+AppConfig.set(ConfigKeys.RESUME_TEMPLATE,"templates/ats.docx")
 AppConfig.set(ConfigKeys.ACCESS_TOKEN_EXPIRE_MINUTES,30)
-AppConfig.set(ConfigKeys.UPLOAD_DIR,UPLOAD_DIR)
+AppConfig.set(ConfigKeys.RESUME_STATIC_DIR,RESUME_STATIC_DIR)
 
 
 # Database configuration

@@ -18,13 +18,15 @@ from server.resume.models import Resume,ResumeType
 from server.job_description.models import JobDescription
 import ast
 from ai.agents.resume_tuner_agent import ResumeTuningCrew
-
+from fastapi import HTTPException, status
+from tortoise.exceptions import DoesNotExist
+from resume_builder.builder import ResumeBuilder
 class ResumeService:
     @staticmethod
     def get_upload_path(file: UploadFile):
-        upload_dir = AppConfig.get(ConfigKeys.UPLOAD_DIR)
+        upload_dir = AppConfig.get(ConfigKeys.RESUME_STATIC_DIR)
         if not upload_dir:
-            raise ValueError("UPLOAD_DIR is not configured")
+            raise ValueError("RESUME_STATIC_DIR is not configured")
 
         os.makedirs(upload_dir, exist_ok=True)
 
@@ -269,3 +271,52 @@ class ResumeService:
         
         return EventSourceResponse(event_generator())
 
+    @staticmethod
+    async def generate_resume_service(user_id: str, resume_id: int):
+        async def event_generator():
+            try:
+                # Fetch and validate ownership
+                resume = await Resume.get(id=resume_id).prefetch_related("user")
+                if str(resume.user.id) != str(user_id):
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="Not authorized to access this resume."
+                    )
+
+                yield {"event": "message", "data": "Resume found. Starting generation..."}
+
+                # Validate data
+                if not resume.extracted_data:
+                    raise HTTPException(status_code=400, detail="No extracted data available for resume generation.")
+                
+                await asyncio.sleep(1)
+                yield {"event": "message", "data": "Rendering resume template..."}
+
+                # Path config
+                resume_dir = AppConfig.get(ConfigKeys.RESUME_STATIC_DIR)
+                os.makedirs(resume_dir, exist_ok=True)
+
+                filename = f"{uuid.uuid4()}.docx"
+                output_path = os.path.join(resume_dir, filename)
+
+                # Generate the resume docx
+                ResumeBuilder.generate_resume_docx(
+                    template_path=AppConfig.get(ConfigKeys.RESUME_TEMPLATE),
+                    data=resume.extracted_data,
+                    output_path=output_path
+                )
+
+                # Save to DB
+                resume.file_path = filename
+                await resume.save()
+
+                yield {"event": "message", "data": "Resume generation completed successfully."}
+
+            except DoesNotExist:
+                yield {"event": "error", "data": "Resume not found."}
+            except HTTPException as e:
+                yield {"event": "error", "data": str(e.detail)}
+            except Exception as e:
+                yield {"event": "error", "data": f"Unexpected error: {str(e)}"}
+
+        return EventSourceResponse(event_generator())
