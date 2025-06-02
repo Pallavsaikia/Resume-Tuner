@@ -15,6 +15,7 @@ from ai.agents.extractor_agents import  ExtractorAgent
 from ai.llm.azure_open_ai import get_azure_open_ai_llm
 from ai.tasks.extract_resume_task import ExtractResumeTask
 from server.resume.models import Resume,ResumeType
+from server.job_description.models import JobDescription
 import ast
 from ai.agents.resume_tuner_agent import ResumeTuningCrew
 
@@ -159,41 +160,112 @@ class ResumeService:
 
 
     @staticmethod
-    async def tune_resume_events(user_id:int,resume_id:int,job_description:str,comment:str):
-
-
+    async def tune_resume_events(user_id: int, resume_id: int, job_description_id: int, comment: str):
         async def event_generator():
             try:
-                llm=get_azure_open_ai_llm()
-                resume=await Resume.get(id=resume_id)
-                print(resume)
-                extracted_data=ResumeTuningCrew(llm).crew().kickoff(inputs={
-                    "resume": resume.extracted_data,  # Your actual user ID
-                    "job_description":job_description,
-                    "comment":comment
-                }) 
-                print(extracted_data)
+                # Send initial progress event
+                yield f"event: progress\ndata: {json.dumps({'message': 'Starting resume tuning process...', 'progress': 0})}\n\n"
                 
-                extracted_json_data=extracted_data.raw
-                print(type(extracted_json_data))
-                extracted_json=ResumeService.safe_json_parse(extracted_json_data)
+                llm = get_azure_open_ai_llm()
+                resume = await Resume.get(id=resume_id)
+                job_description=await JobDescription.get(id=job_description_id)
+                print("Original Resume:", resume)
+                
+                if resume is None or job_description is None:
+                    raise Exception("Invalid resume or Job Description ID")
+                # Send progress update
+                yield f"event: progress\ndata: {json.dumps({'message': 'Resume loaded, starting AI tuning...', 'progress': 25})}\n\n"
+                
+                # Execute the crew
+                crew_result = ResumeTuningCrew(llm).crew().kickoff(inputs={
+                    "resume": resume.extracted_data,
+                    "job_description": job_description.job_description,
+                    "comment": comment
+                })
+                
+                print("Crew Result:", crew_result)
+                
+                # Send progress update
+                yield f"event: progress\ndata: {json.dumps({'message': 'AI tuning completed, extracting JSON...', 'progress': 75})}\n\n"
+                
+                # Extract JSON from the first task (job_matching_task)
+                extracted_json = None
+                
+                try:
+                    # Method 1: Try to get raw output from first task
+                    if hasattr(crew_result, 'tasks_output') and crew_result.tasks_output:
+                        tuned_resume_raw = crew_result.tasks_output[0].raw
+                        print("Raw output from first task:", tuned_resume_raw)
+                        extracted_json = ResumeService.safe_json_parse(tuned_resume_raw)
+                    
+                    # Method 2: If first method fails, try crew_result.raw
+                    if extracted_json is None and hasattr(crew_result, 'raw'):
+                        print("Trying crew_result.raw:", crew_result.raw)
+                        extracted_json = ResumeService.safe_json_parse(crew_result.raw)
+                    
+                    # Method 3: Fallback - regex extraction from string representation
+                    if extracted_json is None:
+                        import re
+                        crew_str = str(crew_result)
+                        print("Trying regex extraction from:", crew_str[:500] + "...")
+                        
+                        # Look for JSON pattern in the string
+                        json_match = re.search(r'\{.*\}', crew_str, re.DOTALL)
+                        if json_match:
+                            potential_json = json_match.group()
+                            extracted_json = ResumeService.safe_json_parse(potential_json)
+                    
+                except Exception as parse_error:
+                    print(f"Error during JSON extraction: {parse_error}")
+                
+                # Validate extracted JSON
                 if extracted_json is None:
-                    raise Exception("Bad json")
-
+                    print("All JSON extraction methods failed")
+                    print("Crew result type:", type(crew_result))
+                    print("Crew result attributes:", dir(crew_result))
+                    raise Exception("Failed to extract valid JSON from tuned resume. Please check the AI model output format.")
+                
+                # Send progress update
+                yield f"event: progress\ndata: {json.dumps({'message': 'Creating new resume record...', 'progress': 90})}\n\n"
+                
+                # Create new resume record
                 new_resume = await Resume.create(
-                    file_path="test",
-                    extracted_data= extracted_json,
-                    resume_type=ResumeType.GENERATED,  # or ResumeType.GENERATED
-                    user_id=user_id
+                    # file_path=f"tuned_resume_{resume_id}.json",  # More descriptive filename
+                    extracted_data=extracted_json,
+                    resume_type=ResumeType.GENERATED,
+                    user_id=user_id,
+                    job_description_id=job_description_id,
+                    comment=comment
                 )
+                
+                # Prepare success result
                 result = {
                     "status": "success",
-                    "message": "Resume processed successfully",
-                    "text_snippet": str(extracted_data)  # first 500 chars as sample
+                    "message": "Resume tuned successfully",
+                    "new_resume_id": new_resume.id,
+                    "original_resume_id": resume_id,
+                    "tuned_data_preview": {
+                        "objective": extracted_json.get("objective", "")[:200] + "..." if len(extracted_json.get("objective", "")) > 200 else extracted_json.get("objective", ""),
+                        "skills_count": len(extracted_json.get("skills", {})) if isinstance(extracted_json.get("skills"), dict) else 0,
+                        "experience_count": len(extracted_json.get("experience", [])) if isinstance(extracted_json.get("experience"), list) else 0
+                    }
                 }
+                
+                # Send final success event
                 yield f"event: done\ndata: {json.dumps(result)}\n\n"
-
+                
             except Exception as e:
-                yield f"event: error\ndata: {json.dumps({'message': str(e)})}\n\n"
-
+                print(f"Error in tune_resume_events: {e}")
+                print(f"Error type: {type(e)}")
+                import traceback
+                traceback.print_exc()
+                
+                error_result = {
+                    "status": "error",
+                    "message": str(e),
+                    "error_type": type(e).__name__
+                }
+                yield f"event: error\ndata: {json.dumps(error_result)}\n\n"
+        
         return EventSourceResponse(event_generator())
+

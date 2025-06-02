@@ -22,4 +22,4 @@ async def process_resume(request: Request, file: UploadFile):
 
 
 async def tune_resume(request:Request, data: TuneResumeDTO):
-    return await ResumeService.tune_resume_events(request.state.user_id,data.resume_id,data.job_description,data.comment)
+    return await ResumeService.tune_resume_events(request.state.user_id,data.resume_id,data.job_description_id,data.comment)

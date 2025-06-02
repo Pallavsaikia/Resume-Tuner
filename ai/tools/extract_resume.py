@@ -6,8 +6,13 @@ class WorkItem(BaseModel):
     timespan: Optional[str] = Field(None, description="Duration or time period (e.g., '2020-2022', 'Jan 2021 - Present')")
     designation: str = Field(..., description="Designation of the work experience")
     description: Optional[str] = Field(None, description="description of work done in the experience")
+    responsibilities: List[str] = Field(..., description="list of responsibilities carried  in the experience")
     company_name: str = Field(..., description="Name of the company for the experience.Usually along with designation")
 
+class EducationItem(BaseModel):
+    degree: str = Field(..., description="Name of the Degree")
+    institution: Optional[str] = Field(None, description="Name of the Institution for the degree")
+    duration: str = Field(..., description="Duration/timestamp of the degree")
 class ProjectItem(BaseModel):
     name: Optional[str] = Field(None, description="Name of the project")
     description: Optional[str] = Field(None, description="Work done in the project as text")
@@ -21,6 +26,7 @@ class ExtractResumeFieldToolSchema(BaseModel):
     github_url: Optional[str] = Field(None, description="URL of GitHub profile from resume")
     email: Optional[str] = Field(None, description="Email address from resume")
     skills: List[str] = Field(..., description="Skills/Tools/Libraries from resume")
+    education: Optional[List[EducationItem]] = Field(..., description="Educational Qualification in th resume with degree,institution and duration")
     work_experience: Optional[List[WorkItem]] = Field(default_factory=list, description="Work experience entries with designation,timespan and description")
     projects: Optional[List[ProjectItem]] = Field(default_factory=list, description="Project entries from resume")
     certifications: Optional[List[str]] = Field(default_factory=list, description="certification entries from resume")
